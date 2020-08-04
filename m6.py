@@ -9,35 +9,77 @@ import numpy as np
 
 def plot_heads(org, lrc: list, ylabel: str, **kwargs):
     """
+    it plots heads from bhd modflow 6 ourput files; heads can be plotted
+        with stress periods or time steps in x axis
+    now only structured grids can be used but unstructured grids will be
+        addedd soon
+    to read bhs fiel ir uses flopy
+
     https://modflowpy.github.io/flopydoc/binaryfile.html
     optional arguments
-        date0: a str date representation as yyyy-mm-dd (it's not used yet)
-        dir_out: directory where png plots will be saved. If nor present
+        date0 str: a str date representation as yyyy-mm-dd (it's not used yet)
+        dir_out str: directory where png plots will be saved. If nor present
             plot is shown in the screen
+        xlabel str: label in x axis -xlabel-
+        time_step bool: if present and is True time steps are represented
     """
+    import sqlite3
     import flopy.utils.binaryfile as bf
+    create_db = \
+    'create table t1 (fid integer, time_step integer, stress_period integer, ' +\
+    'primary key (fid, time_step, stress_period) )'
+    insert = \
+    'insert into t1 (fid, time_step, stress_period) values (?, ?, ?)'
+    select1 = 'select distinct stress_period from t1 order by stress_period'
+    select2 = 'select max(fid) from t1 where stress_period=?'
+
+    con = sqlite3.connect(':memory:')
+    cur = con.cursor()
 
     fi = bf.HeadFile(org)
-    # Get a list of unique stress periods and time steps in the file
-    kstpkper = fi.get_kstpkper()
-    print('stress periods and time steps')
-    print(kstpkper)
+    if 'time_steps' not in kwargs or \
+    'time_steps' in kwargs and not kwargs['time_steps']:
+        cur.execute(create_db)
+        # Get a list of unique stress periods and time steps in the file
+        kstpkper = fi.get_kstpkper()
+        for i, item in enumerate(kstpkper):
+            cur.execute(insert, (int(i), int(item[0]), int(item[1])))
+        cur.execute(select1)
+        stress_periods = [ row[0] for row in cur.fetchall()]
+        ii = []
+        for stress_period in stress_periods:
+            cur.execute(select2, (stress_period,))
+            ii1 = cur.fetchone()
+            ii.append(ii1[0])
 
     hds = fi.get_ts(lrc)
     fi.close()
+
+    if 'time_steps' in kwargs and kwargs['time_steps']:
+        x = hds[:, 0]
+        suffix = '_ts'
+    else:
+        x = np.array([i for i in range(len(stress_periods))], np.float32)
+        suffix = '_sp'
+        y = np.empty((len(stress_periods)), np.float32)
+
     for i in range(len(lrc)):
-        title = f'layer {lrc[i][0]:n}, row {lrc[i][1]:n}, col {lrc[i][2]:n}'
+        title = f'Head in layer {lrc[i][0]:n}, row {lrc[i][1]:n}, ' +\
+        f'col {lrc[i][2]:n}'
         if 'dir_out' in kwargs:
             kwargs['name_file'] = \
-            f'l{lrc[i][0]:n}_r{lrc[i][1]:n}_c{lrc[i][2]:n}'
+            f'L{lrc[i][0]:n}_R{lrc[i][1]:n}_C{lrc[i][2]:n}' + suffix
         print(title)
 
-        if 'date0' not in kwargs:
-            x = np.array([i for i in range(hds.shape[0])], np.float32)
-            ycol = i + 1
-            xy_plot_1g(title, x, hds[:, ycol], ylabel, kwargs)
+        ycol = i + 1
+        if 'time_steps' in kwargs and kwargs['time_steps']:
+            y = hds[:, ycol]
         else:
-            break
+            for j, ii1 in enumerate(ii):
+                y[j] = hds[ii1, ycol]
+
+        xy_plot_1g(title, x, y, ylabel, kwargs)
+    con.close()
 
 
 def xy_plot_1g(title: str, x: list, y: list, ylabel: str, kwargs: dict):
@@ -68,6 +110,8 @@ def xy_plot_1g(title: str, x: list, y: list, ylabel: str, kwargs: dict):
 
     plt.suptitle(title)
     ax.set_ylabel(ylabel)
+    if 'xlabel' in kwargs:
+        ax.set_xlabel(kwargs['xlabel'])
 
     if isinstance(x[0], date):
         fig.autofmt_xdate()

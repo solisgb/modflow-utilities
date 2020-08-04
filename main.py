@@ -10,10 +10,10 @@ plot_heads uses optional arguments
 """
 import littleLogging as logging
 
-org = r'H:\modflow\exercises\session02\ex2\ex2_2.bhd'
-layer_row_col = [[0,4,4], [0,5,5]]
-ylabel = 'CNP m s.n.m.'
-dir_out = r'H:\modflow\exercises\session02\ex2\xy'
+org = r'H:\modflow\exercises\session04\ex1\ex1_1.bhd'
+layer_row_col = [[0,7,16], [0,34,7]]
+ylabel = 'MASL'
+dir_out = r'H:\modflow\exercises\session04\ex1\xy_1'
 
 
 if __name__ == "__main__":
@@ -28,7 +28,8 @@ if __name__ == "__main__":
 
         startTime = time()
 
-        m6.plot_heads(org, layer_row_col, ylabel, dir_out=dir_out)
+        m6.plot_heads(org, layer_row_col, ylabel, xlabel='stress period',
+                      dir_out=dir_out, time_steps=False)
 
         xtime = time() - startTime
         print(f'El script tardó {xtime:0.1f} s')
