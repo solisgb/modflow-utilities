@@ -10,97 +10,18 @@ https://modflowpy.github.io/flopydoc
 import numpy as np
 
 
-def plot_heads(org, lrc: list, ylabel: str, **kwargs):
-    """
-    This function is candidate to be refactored
-
-    it plots heads from bhd modflow 6 ourput files; heads can be plotted
-        with stress periods or time steps in x axis
-    now only structured grids can be used but unstructured grids will be
-        addedd soon
-    to read bhs fiel ir uses flopy
-
-    https://modflowpy.github.io/flopydoc/binaryfile.html
-    optional arguments
-        date0 str: a str date representation as yyyy-mm-dd (it's not used yet)
-        dir_out str: directory where png plots will be saved. If nor present
-            plot is shown in the screen
-        xlabel str: label in x axis -xlabel-
-        time_step bool: if present and is True time steps are represented
-    """
-    import sqlite3
-    import flopy.utils.binaryfile as bf
-    create_db = \
-    'create table t1 (fid integer, time_step integer, stress_period integer, ' +\
-    'primary key (fid, time_step, stress_period) )'
-    insert = \
-    'insert into t1 (fid, time_step, stress_period) values (?, ?, ?)'
-    select1 = 'select distinct stress_period from t1 order by stress_period'
-    select2 = 'select max(fid) from t1 where stress_period=?'
-
-    con = sqlite3.connect(':memory:')
-    cur = con.cursor()
-
-    fi = bf.HeadFile(org)
-    if 'time_steps' not in kwargs or \
-    'time_steps' in kwargs and not kwargs['time_steps']:
-        cur.execute(create_db)
-        # Get a list of unique stress periods and time steps in the file
-        kstpkper = fi.get_kstpkper()
-        for i, item in enumerate(kstpkper):
-            cur.execute(insert, (int(i), int(item[0]), int(item[1])))
-        cur.execute(select1)
-        stress_periods = [ row[0] for row in cur.fetchall()]
-        ii = []
-        for stress_period in stress_periods:
-            cur.execute(select2, (stress_period,))
-            ii1 = cur.fetchone()
-            ii.append(ii1[0])
-
-    hds = fi.get_ts(lrc)
-    fi.close()
-
-    if 'time_steps' in kwargs and kwargs['time_steps']:
-        x = hds[:, 0]
-        suffix = '_ts'
-    else:
-        x = np.array([i for i in range(len(stress_periods))], np.float32)
-        suffix = '_sp'
-        y = np.empty((len(stress_periods)), np.float32)
-
-    for i in range(len(lrc)):
-        title = f'Head in layer {lrc[i][0]:n}, row {lrc[i][1]:n}, ' +\
-        f'col {lrc[i][2]:n}'
-        if 'dir_out' in kwargs:
-            kwargs['name_file'] = \
-            f'L{lrc[i][0]:n}_R{lrc[i][1]:n}_C{lrc[i][2]:n}' + suffix
-        print(title)
-
-        ycol = i + 1
-        if 'time_steps' in kwargs and kwargs['time_steps']:
-            y = hds[:, ycol]
-        else:
-            for j, ii1 in enumerate(ii):
-                y[j] = hds[ii1, ycol]
-
-        xy_plot_1g(title, x, y, ylabel, kwargs)
-    con.close()
-
-
 def plot_heads_sg(org: str, rows_cols: tuple, dir_out: str, **kwargs):
     """
     Function plots heads. Heads are read from a bhd file in a structured grid
     args:
         org: bhd file
         rows_cols: list of pairs (row, column) to be plotted
-        dir_out str: directory where png plots will be saved. If not present
-            plot is shown in the screen
-        xlabel str: label in x axis
+        dir_out str: directory where png plots will be saved
     optional args
         layers tuple: list of layers to be plotted; is not present all layers
             will bel plotted
         ylabel str: label in y axis
-        more optional args in xy_plot_1g
+        more optional args in get_heads_sg, get_requested_layers and xy_plot_1g
     """
     from os.path import join
 
@@ -110,21 +31,18 @@ def plot_heads_sg(org: str, rows_cols: tuple, dir_out: str, **kwargs):
         ylabel = 'm asl'
 
     irows_cols = [(item[0] - 1, item[1] - 1) for item in rows_cols]
-    # TODO:
     hds = get_heads_sg(org, irows_cols, **kwargs)
     x = np.array([i for i in range(hds.shape[2])], np.float32)
-    if 'layers' in kwargs:
-        ilayers = [item-1 for item in kwargs['layers']]
-    else:
-        ilayers = [item for item in range(hds.shape[1])]
-    for i, cell in enumerate(icells):
+    ilayers = get_requested_layers(hds.shape[1], **kwargs)
+
+    for i, rc in enumerate(irows_cols):
         heads_ly = []
         leg_ly = []
         for j, layer in enumerate(ilayers):
-            title = f'Head in cell {cell:n}'
-            dst = join(dir_out, f'hd_cell_{cell:n}.png')
+            title = f'Head in row {rc[0]+1:n}, column {rc[1]+1:n}'
+            dst = join(dir_out, f'hd_row_{rc[0]+1:n}_col_{rc[1]+1:n}.png')
             heads_ly.append(hds[i, j, :])
-            leg_ly.append(f'ly {layer:n}')
+            leg_ly.append(f'ly {layer+1:n}')
         xy_plot_1g(title, x, heads_ly, leg_ly, ylabel, dst, **kwargs)
 
 
@@ -141,7 +59,7 @@ def plot_heads_ug(org: str, cells: tuple, dir_out: str, **kwargs):
         layers tuple: list of layers to be plotted; is not present all layers
             will bel plotted
         ylabel str: label in y axis
-        more optional args in xy_plot_1g
+        more optional args in get_heads_ug, get_requested_layers and xy_plot_1g
     """
     from os.path import join
 
@@ -161,10 +79,10 @@ def plot_heads_ug(org: str, cells: tuple, dir_out: str, **kwargs):
         heads_ly = []
         leg_ly = []
         for j, layer in enumerate(ilayers):
-            title = f'Head in cell {cell:n}'
-            dst = join(dir_out, f'hd_cell_{cell:n}.png')
+            title = f'Head in cell {cell+1:n}'
+            dst = join(dir_out, f'hd_cell_{cell+1:n}.png')
             heads_ly.append(hds[i, j, :])
-            leg_ly.append(f'ly {layer:n}')
+            leg_ly.append(f'ly {layer+1:n}')
         xy_plot_1g(title, x, heads_ly, leg_ly, ylabel, dst, **kwargs)
 
 
@@ -205,22 +123,18 @@ def get_heads_sg(org: str, rows_cols: list, **kwargs):
     fi = bf.HeadFile(org)
     _, ii = get_last_ts_sp(fi, **kwargs)
 
-    h = fi.get_data(kstpkper=(0, 0))
-    nlays = h.shape[0]
+    hds = fi.get_data(kstpkper=(0, 0))
+    nlays = hds.shape[0]
     hd_ts = np.empty((len(rows_cols), nlays, len(ii)), np.float32)
 
     ilayers = get_requested_layers(nlays, **kwargs)
 
     # TODO:
-    for i, item in enumerate(ts_sp):
-        hds = fi.get_data(kstpkper=item)
-        if i == 0:
-            nlays = hds.shape[0]
-            hd_ts = np.empty((len(cells), nlays, len(ts_sp)), np.float32)
-
-        for j, cell in enumerate(cells):
-            for ilay in range(nlays):
-                hd_ts[j, ilay, i] = hds[ilay, 0, cell]
+    for i, rc in enumerate(rows_cols):
+        for j, layer in enumerate(ilayers):
+            hds = fi.get_ts((layer, rc[0], rc[1]))
+            for k, i1 in enumerate(ii):
+                hd_ts[i, j, k] = hds[i1][1]
     return hd_ts
 
 
@@ -304,7 +218,10 @@ def get_requested_layers(nlays: int, **kwargs):
 def xy_plot_1g(title: str, x: list, ys: list, legs: list, ylabel: str,
                dst: str, **kwargs: dict):
     """
-    plot a png file
+    plot a png file with head time series in a cell. As ys is a list
+        of head time series in all or at least one layer, several series
+        can be drawn in the same axis (the figure has only one axis in
+        matplotlib terminlogy)
     args
         title: figure title
         x: list of stress periods
@@ -353,3 +270,80 @@ def xy_plot_1g(title: str, x: list, ys: list, legs: list, ylabel: str,
 
     plt.close('all')
     plt.rcdefaults()
+
+
+def plot_heads(org, lrc: list, ylabel: str, **kwargs):
+    """
+    Deprecated, use plot:head_sg instead
+
+    it plots heads from bhd modflow 6 ourput files; heads can be plotted
+        with stress periods or time steps in x axis
+    now only structured grids can be used but unstructured grids will be
+        addedd soon
+    to read bhs fiel ir uses flopy
+
+    https://modflowpy.github.io/flopydoc/binaryfile.html
+    optional arguments
+        date0 str: a str date representation as yyyy-mm-dd (it's not used yet)
+        dir_out str: directory where png plots will be saved. If nor present
+            plot is shown in the screen
+        xlabel str: label in x axis -xlabel-
+        time_step bool: if present and is True time steps are represented
+    """
+    import sqlite3
+    import flopy.utils.binaryfile as bf
+    create_db = \
+    'create table t1 (fid integer, time_step integer, stress_period integer, ' +\
+    'primary key (fid, time_step, stress_period) )'
+    insert = \
+    'insert into t1 (fid, time_step, stress_period) values (?, ?, ?)'
+    select1 = 'select distinct stress_period from t1 order by stress_period'
+    select2 = 'select max(fid) from t1 where stress_period=?'
+
+    con = sqlite3.connect(':memory:')
+    cur = con.cursor()
+
+    fi = bf.HeadFile(org)
+    if 'time_steps' not in kwargs or \
+    'time_steps' in kwargs and not kwargs['time_steps']:
+        cur.execute(create_db)
+        # Get a list of unique stress periods and time steps in the file
+        kstpkper = fi.get_kstpkper()
+        for i, item in enumerate(kstpkper):
+            cur.execute(insert, (int(i), int(item[0]), int(item[1])))
+        cur.execute(select1)
+        stress_periods = [ row[0] for row in cur.fetchall()]
+        ii = []
+        for stress_period in stress_periods:
+            cur.execute(select2, (stress_period,))
+            ii1 = cur.fetchone()
+            ii.append(ii1[0])
+
+    hds = fi.get_ts(lrc)
+    fi.close()
+
+    if 'time_steps' in kwargs and kwargs['time_steps']:
+        x = hds[:, 0]
+        suffix = '_ts'
+    else:
+        x = np.array([i for i in range(len(stress_periods))], np.float32)
+        suffix = '_sp'
+        y = np.empty((len(stress_periods)), np.float32)
+
+    for i in range(len(lrc)):
+        title = f'Head in layer {lrc[i][0]:n}, row {lrc[i][1]:n}, ' +\
+        f'col {lrc[i][2]:n}'
+        if 'dir_out' in kwargs:
+            kwargs['name_file'] = \
+            f'L{lrc[i][0]:n}_R{lrc[i][1]:n}_C{lrc[i][2]:n}' + suffix
+        print(title)
+
+        ycol = i + 1
+        if 'time_steps' in kwargs and kwargs['time_steps']:
+            y = hds[:, ycol]
+        else:
+            for j, ii1 in enumerate(ii):
+                y[j] = hds[ii1, ycol]
+
+        xy_plot_1g(title, x, y, ylabel, kwargs)
+    con.close()
