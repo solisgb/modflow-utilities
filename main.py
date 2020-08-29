@@ -18,10 +18,10 @@ Both functions have optional arguments: look at function definition in m6
 """
 import littleLogging as logging
 
-org = r'H:\modflow\course\Session_2\Exercise_2\myEx2\myEx2_transient.bhd'
+org = r'H:\modflow\exam1\v01\v01.bhd'
 rows_cols = [[10,4], [10,9]]
-cells = (28, 3719)
-dir_out = r'H:\modflow\course\Session_2\Exercise_2\myEx2\xy'
+cells = (2834, 9935, 9984)
+dir_out = r'H:\modflow\exam1\v01\xy'
 
 if __name__ == "__main__":
 
@@ -35,9 +35,9 @@ if __name__ == "__main__":
 
         startTime = time()
 
-        m6.plot_heads_sg(org, rows_cols, dir_out)
+#        m6.plot_heads_sg(org, rows_cols, dir_out)
 
-#        m6.plot_heads_ug(org, cells, dir_out)
+        m6.plot_heads_ug(org, cells, dir_out)
 
         xtime = time() - startTime
         msg = f'El script tardó {xtime:0.1f} s'

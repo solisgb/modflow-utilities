@@ -4,15 +4,21 @@ Created on Sun Aug  2 16:49:25 2020
 
 @author: solis
 
-module uses flopy extensively
-https://modflowpy.github.io/flopydoc
+module uses flopy extensively (https://modflowpy.github.io/flopydoc)
+
+functionallity
+Plot heads time series at the end of each stress period
+    functions plot_heads_sg & plot_heads_ug
+Gets heads time series at the end of each stress period
+    functions get_heads_sg & get_heads_ug
 """
 import numpy as np
 
 
 def plot_heads_sg(org: str, rows_cols: tuple, dir_out: str, **kwargs):
     """
-    Function plots heads. Heads are read from a bhd file in a structured grid
+    It plots heads simulated in the last time step of each stress period.
+        Heads are read from a bhd file in a structured grid (no DISV)
     args:
         org: bhd file
         rows_cols: list of pairs (row, column) to be plotted
@@ -31,8 +37,7 @@ def plot_heads_sg(org: str, rows_cols: tuple, dir_out: str, **kwargs):
         ylabel = 'm asl'
 
     irows_cols = [(item[0] - 1, item[1] - 1) for item in rows_cols]
-    hds = get_heads_sg(org, irows_cols, **kwargs)
-    x = np.array([i for i in range(hds.shape[2])], np.float32)
+    hds, times = get_heads_sg(org, irows_cols, **kwargs)
     ilayers = get_requested_layers(hds.shape[1], **kwargs)
 
     for i, rc in enumerate(irows_cols):
@@ -43,12 +48,13 @@ def plot_heads_sg(org: str, rows_cols: tuple, dir_out: str, **kwargs):
             dst = join(dir_out, f'hd_row_{rc[0]+1:n}_col_{rc[1]+1:n}.png')
             heads_ly.append(hds[i, j, :])
             leg_ly.append(f'ly {layer+1:n}')
-        xy_plot_1g(title, x, heads_ly, leg_ly, ylabel, dst, **kwargs)
+        xy_plot_1g(title, times, heads_ly, leg_ly, ylabel, dst, **kwargs)
 
 
 def plot_heads_ug(org: str, cells: tuple, dir_out: str, **kwargs):
     """
-    Function plots heads. Heads are read from a bhd file in a unstructured grid
+    It plots heads simulated in the last time step of each stress period.
+        Heads are read from a bhd file in a unstructured grid (DISV)
     args:
         org: bhd file
         cells: list o cells to be plotted
@@ -69,8 +75,7 @@ def plot_heads_ug(org: str, cells: tuple, dir_out: str, **kwargs):
         ylabel = 'm asl'
 
     icells = [item-1 for item in cells]
-    hds = get_heads_ug(org, icells, **kwargs)
-    x = np.array([i for i in range(hds.shape[2])], np.float32)
+    hds, times = get_heads_ug(org, icells, **kwargs)
     if 'layers' in kwargs:
         ilayers = [item-1 for item in kwargs['layers']]
     else:
@@ -83,7 +88,7 @@ def plot_heads_ug(org: str, cells: tuple, dir_out: str, **kwargs):
             dst = join(dir_out, f'hd_cell_{cell+1:n}.png')
             heads_ly.append(hds[i, j, :])
             leg_ly.append(f'ly {layer+1:n}')
-        xy_plot_1g(title, x, heads_ly, leg_ly, ylabel, dst, **kwargs)
+        xy_plot_1g(title, times, heads_ly, leg_ly, ylabel, dst, **kwargs)
 
 
 def get_disv_dimension(org):
@@ -122,6 +127,7 @@ def get_heads_sg(org: str, rows_cols: list, **kwargs):
 
     fi = bf.HeadFile(org)
     _, ii = get_last_ts_sp(fi, **kwargs)
+    times = fi.get_times()
 
     hds = fi.get_data(kstpkper=(0, 0))
     nlays = hds.shape[0]
@@ -135,7 +141,7 @@ def get_heads_sg(org: str, rows_cols: list, **kwargs):
             hds = fi.get_ts((layer, rc[0], rc[1]))
             for k, i1 in enumerate(ii):
                 hd_ts[i, j, k] = hds[i1][1]
-    return hd_ts
+    return hd_ts, times
 
 
 def get_heads_ug(org: str, cells: list, **kwargs):
@@ -147,7 +153,8 @@ def get_heads_ug(org: str, cells: list, **kwargs):
     import flopy.utils.binaryfile as bf
 
     fi = bf.HeadFile(org)
-    ts_sp = get_last_ts_sp(fi, **kwargs)
+    ts_sp, _ = get_last_ts_sp(fi, **kwargs)
+    times = np.array(fi.get_times(), np.float32)
 
     for i, item in enumerate(ts_sp):
         hds = fi.get_data(kstpkper=item)
@@ -158,7 +165,7 @@ def get_heads_ug(org: str, cells: list, **kwargs):
         for j, cell in enumerate(cells):
             for ilay in range(nlays):
                 hd_ts[j, ilay, i] = hds[ilay, 0, cell]
-    return hd_ts
+    return hd_ts, times
 
 
 def get_last_ts_sp(fi, **kwargs):
@@ -261,7 +268,7 @@ def xy_plot_1g(title: str, x: list, ys: list, legs: list, ylabel: str,
 
     for y1, leg1 in zip(ys,legs):
         ax.plot(x, y1, label=leg1)
-    plt.legend(framealpha=0.5)
+    plt.legend(framealpha=0.5, loc='best')
 
     if 'to_screen' in kwargs and  kwargs['to_screen']:
         plt.show()
@@ -274,7 +281,7 @@ def xy_plot_1g(title: str, x: list, ys: list, legs: list, ylabel: str,
 
 def plot_heads(org, lrc: list, ylabel: str, **kwargs):
     """
-    Deprecated, use plot:head_sg instead
+    Deprecated, use plot_head_sg instead
 
     it plots heads from bhd modflow 6 ourput files; heads can be plotted
         with stress periods or time steps in x axis
