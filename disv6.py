@@ -63,9 +63,23 @@ class DISV():
                     tmp = np.array(tmp, np.float64)
                     hs[0, :] = tmp
 
-                for layer in range(dim['NLAY']):
+                for ilay in range(dim['NLAY']):
                     nb1 = self.__move_start_next_line(obj, nb2)
                     line, nb1 = self.__read_line(obj, nb1)
+                    if b'CONSTANT' in line:
+                        hs[ilay+2, :] = float(line.decode('utf-8').split()[-1])
+                    else:
+                        if ilay + 1 < dim['NLAY']:
+                            nb0 = nb1
+                            while True:
+                                line, nb1 = self.__read_line(obj, nb1)
+                                if b'INTERNAL IPRN' in line or \
+                                b'CONSTANT' in line
+
+
+                        else:
+                            pass
+
 
 #                for i in range(dim['NLAY']):
 #                    if i < dim['NLAY'] - 1:
@@ -95,7 +109,7 @@ class DISV():
         """
         search for label in obj and positions cursor at he beguining of the
             line
-        if not found raises a ValueError error
+        if label is not found raises a ValueError error
         """
         if posn is None:
             posn = obj.tell()
@@ -108,8 +122,8 @@ class DISV():
 
     def __move_start_next_line(self, obj, posn = None):
         """
-        move to end of the current line
-        returns the position of the end of the line
+        move to start of the next line
+        returns the position of the beguining end of this line
         """
         if posn is None:
             posn = obj.tell()
@@ -118,9 +132,23 @@ class DISV():
         return x1
 
 
+    def __move_start_prev_line(self, obj, posn = None):
+        """
+        move to the start of the previous line
+        returns the position of the beguining of this line
+        """
+        if posn is None:
+            posn = obj.tell()
+        for i in range(2):
+            posn = obj.rfind(b'\n', posn)
+            obj.seek(x1)
+        x1 = self.__move_start_next_line(obj, posn)
+        return x1
+
+
     def __read_line(self, obj, posn):
         """
-        read current line and moves to start of the next line
+        read current line and moves to the start of the next line
         """
         obj.seek(posn)
         line = obj.readline()
