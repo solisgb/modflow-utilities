@@ -63,20 +63,24 @@ class DISV():
                     tmp = np.array(tmp, np.float64)
                     hs[0, :] = tmp
 
+                nb1 = self.__move_start_next_line(obj, nb2)
                 for ilay in range(dim['NLAY']):
-                    nb1 = self.__move_start_next_line(obj, nb2)
                     line, nb1 = self.__read_line(obj, nb1)
                     if b'CONSTANT' in line:
                         hs[ilay+2, :] = float(line.decode('utf-8').split()[-1])
+                        nb1 = self.__move_start_prev_line(obj, nb1)
                     else:
                         if ilay + 1 < dim['NLAY']:
-                            nb0 = nb1
+                            nb2 = nb1
                             while True:
-                                line, nb1 = self.__read_line(obj, nb1)
+                                line, nb2 = self.__read_line(obj, nb2)
                                 if b'INTERNAL IPRN' in line or \
-                                b'CONSTANT' in line
-
-
+                                b'CONSTANT' in line:
+                                    nb2 = self.__move_start_prev_line(obj, nb2)
+                                    break
+                            tmp = obj[nb1:nb2].decode('utf-8').split()
+                            tmp = np.array(tmp, np.float64)
+                            hs[ilay+1, :] = tmp
                         else:
                             pass
 
@@ -105,10 +109,11 @@ class DISV():
         return True
 
 
-    def __find_label(self, obj, label, posn = None):
+    def __find_label(self, obj, label, posn = None, move_cursor = True):
         """
-        search for label in obj and positions cursor at he beguining of the
-            line
+        searches for label in obj and returns the position of in the
+            first character of the label; if move_cursos is True moves the
+            cursor to this position
         if label is not found raises a ValueError error
         """
         if posn is None:
@@ -116,13 +121,26 @@ class DISV():
         x1 = obj.find(label.encode('utf-8'), posn)
         if x1 < 0:
             raise ValueError(f'No se ha encontrado {label}')
-        obj.seek(posn)
+        if move_cursor:
+            obj.seek(x1)
+        return x1
+
+
+    def __move_start_current_line(self, obj, posn = None):
+        """
+        moves to start of the current line
+        returns the position of the beguining of the current line
+        """
+        if posn is None:
+            posn = obj.tell()
+        x1 = obj.rfind(b'\n', 0, posn) + 1
+        obj.seek(x1)
         return x1
 
 
     def __move_start_next_line(self, obj, posn = None):
         """
-        move to start of the next line
+        moves to start of the next line
         returns the position of the beguining end of this line
         """
         if posn is None:
@@ -134,21 +152,34 @@ class DISV():
 
     def __move_start_prev_line(self, obj, posn = None):
         """
-        move to the start of the previous line
+        moves to the start of the previous line
         returns the position of the beguining of this line
         """
         if posn is None:
             posn = obj.tell()
         for i in range(2):
-            posn = obj.rfind(b'\n', posn)
-            obj.seek(x1)
+            posn = obj.rfind(b'\n', 0, posn)
+            obj.seek(posn)
         x1 = self.__move_start_next_line(obj, posn)
         return x1
 
 
+    def __move_end_prev_line(self, obj, posn = None):
+        """
+        moves to the end of the previous line
+        returns the position of the end of this line
+        """
+        if posn is None:
+            posn = obj.tell()
+        posn = obj.rfind(b'\n', posn)
+        obj.seek(posn)
+        return posn
+
+
     def __read_line(self, obj, posn):
         """
-        read current line and moves to the start of the next line
+        reads current line and moves to the start of the next line
+        it mimics readline function in text files
         """
         obj.seek(posn)
         line = obj.readline()
