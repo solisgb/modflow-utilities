@@ -39,26 +39,28 @@ class DISV():
 
     def get_layer_definition(self, end_line=b'\r\n'):
         """
-        returns mode_top
+        returns an array with shape = (n, m)
+            n is num layers + 1; row 1 is model top, then layer bottoms
+            m is num cells per layer
         """
         dim = self.get_dimensions()
         hs = np.empty((dim['NLAY'] + 1, dim['NCPL']), np.float64)
 
-        start_block = ('BEGIN GRIDDATA', 'TOP', 'BOTM LAYERED')
-        end_block = ('IDOMAIN' , 'END GRIDDATA')
+        labels = ('BEGIN GRIDDATA', 'TOP', 'BOTM LAYERED', 'IDOMAIN')
+        flags = (b'INTERNAL IPRN', b'CONSTANT', b'IDOMAIN')
         with open(self.file, mode="r", encoding="utf-8") as fr:
             with mmap.mmap(fr.fileno(), length=0,
                            access=mmap.ACCESS_READ) as obj:
 
-                nb1 = self.__find_label(obj, start_block[0], posn=0)
-                nb1 = self.__find_label(obj, start_block[1], posn=nb1)
+                nb1 = self.__find_label(obj, labels[0], posn=0)
+                nb1 = self.__find_label(obj, labels[1], posn=nb1)
                 nb1 = self.__move_start_next_line(obj, nb1)
 
                 line, nb1 = self.__read_line(obj, nb1)
                 if b'CONSTANT' in line:
                     hs[0, :] = float(line.decode('utf-8').split()[-1])
                 else:
-                    nb2 = self.__find_label(obj, start_block[2], nb1)
+                    nb2 = self.__find_label(obj, labels[2], nb1)
                     tmp = obj[nb1:nb2].decode('utf-8').split()
                     tmp = np.array(tmp, np.float64)
                     hs[0, :] = tmp
@@ -70,42 +72,20 @@ class DISV():
                         hs[ilay+2, :] = float(line.decode('utf-8').split()[-1])
                         nb1 = self.__move_start_prev_line(obj, nb1)
                     else:
-                        if ilay + 1 < dim['NLAY']:
-                            nb2 = nb1
-                            while True:
-                                line, nb2 = self.__read_line(obj, nb2)
-                                if b'INTERNAL IPRN' in line or \
-                                b'CONSTANT' in line:
-                                    nb2 = self.__move_start_prev_line(obj, nb2)
-                                    break
-                            tmp = obj[nb1:nb2].decode('utf-8').split()
-                            tmp = np.array(tmp, np.float64)
-                            hs[ilay+1, :] = tmp
-                        else:
-                            pass
+                        nb2 = nb1
+                        while True:
+                            line, nb2 = self.__read_line(obj, nb2)
+                            if self.__flag_in_line(flags, line):
+                                nb2 = self.__move_start_prev_line(obj, nb2)
+                                break
+                        tmp = obj[nb1:nb2].decode('utf-8').split()
+                        tmp = np.array(tmp, np.float64)
+                        hs[ilay+1, :] = tmp
 
+                nb1 = self.__find_label(obj, labels[3], nb1)
+                nb1 = self.__move_start_next_line(obj, nb1)
+                line, nb1 = self.__read_line(obj, nb1)
 
-#                for i in range(dim['NLAY']):
-#                    if i < dim['NLAY'] - 1:
-#                        x1 = obj.find(start_block[2])
-#                        obj.seek(x1)
-#                        item = obj.readline()
-#                        x1 = x1 + len(item)
-#                        obj.seek(x1)
-#                        x2 = obj.find(start_block[2])
-#                    else:
-#                        x1 = obj.find(start_block[2])
-#                        obj.seek(x1)
-#                        item = obj.readline()
-#                        x1 = x1 + len(item)
-#                        obj.seek(x1)
-#                        x2 = obj.find(end_block[2])
-#                    if x2 <= x1:
-#                        msg = end_block[0].decode("utf-8")
-#                        raise ValueError(f'No se encontra {msg}')
-#                    arr = obj[x1:x2].decode('utf-8').split()
-#                    arr = np.array(arr, np.float64)
-#                    obj.seek(x2)
         return True
 
 
@@ -186,3 +166,12 @@ class DISV():
         new_posn = self.__move_start_next_line(obj, posn)
         return (line, new_posn)
 
+
+    def __flag_in_line(self, flags, line):
+        """
+        returns True if an item in flags is in line
+        """
+        for item in flags:
+            if item in line:
+                return True
+        return False
