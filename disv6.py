@@ -45,9 +45,10 @@ class DISV():
         """
         dim = self.get_dimensions()
         hs = np.empty((dim['NLAY'] + 1, dim['NCPL']), np.float64)
+        active_cells = np.empty((dim['NLAY'], dim['NCPL']), np.int32)
 
         labels = ('BEGIN GRIDDATA', 'TOP', 'BOTM LAYERED', 'IDOMAIN')
-        flags = (b'INTERNAL IPRN', b'CONSTANT', b'IDOMAIN')
+        flags = (b'INTERNAL IPRN', b'CONSTANT', b'IDOMAIN', b'END GRIDDATA')
         with open(self.file, mode="r", encoding="utf-8") as fr:
             with mmap.mmap(fr.fileno(), length=0,
                            access=mmap.ACCESS_READ) as obj:
@@ -56,6 +57,7 @@ class DISV():
                 nb1 = self.__find_label(obj, labels[1], posn=nb1)
                 nb1 = self.__move_start_next_line(obj, nb1)
 
+                # reads model top
                 line, nb1 = self.__read_line(obj, nb1)
                 if b'CONSTANT' in line:
                     hs[0, :] = float(line.decode('utf-8').split()[-1])
@@ -65,26 +67,45 @@ class DISV():
                     tmp = np.array(tmp, np.float64)
                     hs[0, :] = tmp
 
+                # reads layer bottoms
                 nb1 = self.__move_start_next_line(obj, nb2)
                 for ilay in range(dim['NLAY']):
                     line, nb1 = self.__read_line(obj, nb1)
                     if b'CONSTANT' in line:
-                        hs[ilay+2, :] = float(line.decode('utf-8').split()[-1])
+                        hs[ilay+1, :] = int(line.decode('utf-8').split()[1])
                         nb1 = self.__move_start_prev_line(obj, nb1)
                     else:
                         nb2 = nb1
                         while True:
                             line, nb2 = self.__read_line(obj, nb2)
-                            if self.__flag_in_line(flags, line):
+                            if self.__any_item_in_line(flags, line):
                                 nb2 = self.__move_start_prev_line(obj, nb2)
                                 break
                         tmp = obj[nb1:nb2].decode('utf-8').split()
                         tmp = np.array(tmp, np.float64)
                         hs[ilay+1, :] = tmp
+                        nb1 = nb2
 
                 nb1 = self.__find_label(obj, labels[3], nb1)
+
+                # reads cell status (0 inactive, 1 active)
                 nb1 = self.__move_start_next_line(obj, nb1)
-                line, nb1 = self.__read_line(obj, nb1)
+                for ilay in range(dim['NLAY']):
+                    line, nb1 = self.__read_line(obj, nb1)
+                    if b'CONSTANT' in line:
+                        hs[ilay+2, :] = float(line.decode('utf-8').split()[1])
+                        nb1 = self.__move_start_prev_line(obj, nb1)
+                    else:
+                        nb2 = nb1
+                        while True:
+                            line, nb2 = self.__read_line(obj, nb2)
+                            if self.__any_item_in_line(flags, line):
+                                nb2 = self.__move_start_prev_line(obj, nb2)
+                                break
+                        tmp = obj[nb1:nb2].decode('utf-8').split()
+                        tmp = np.array(tmp, np.int32)
+                        active_cells[ilay, :] = tmp
+                        nb1 = nb2
 
         return True
 
@@ -167,7 +188,7 @@ class DISV():
         return (line, new_posn)
 
 
-    def __flag_in_line(self, flags, line):
+    def __any_item_in_line(self, flags, line):
         """
         returns True if an item in flags is in line
         """
