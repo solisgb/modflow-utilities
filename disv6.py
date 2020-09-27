@@ -37,13 +37,17 @@ class DISV():
         return dict(t)
 
 
-    def get_layer_definition(self, end_line=b'\r\n'):
+    def get_layer_definition(self):
         """
-        returns an array with shape = (n, m)
-            n is num layers + 1; row 1 is model top, then layer bottoms
-            m is num cells per layer
+        returns 3 arrays
+            hs: heights of model top and layer bottoms, with shape = (n + 1, m)
+                n is num layers; row 1 is model top, then layer bottoms
+                m is num cells per layer
+            active_cells: active cell indicator (n, m)
+            fid: cell identifier (m)
         """
         dim = self.get_dimensions()
+        fid = np.arange(dim['NCPL'], dtype=np.int32)
         hs = np.empty((dim['NLAY'] + 1, dim['NCPL']), np.float64)
         active_cells = np.empty((dim['NLAY'], dim['NCPL']), np.int32)
 
@@ -64,50 +68,47 @@ class DISV():
                 else:
                     nb2 = self.__find_label(obj, labels[2], nb1)
                     tmp = obj[nb1:nb2].decode('utf-8').split()
-                    tmp = np.array(tmp, np.float64)
+                    tmp = np.array(tmp, hs.dtype)
                     hs[0, :] = tmp
 
                 # reads layer bottoms
                 nb1 = self.__move_start_next_line(obj, nb2)
-                for ilay in range(dim['NLAY']):
-                    line, nb1 = self.__read_line(obj, nb1)
-                    if b'CONSTANT' in line:
-                        hs[ilay+1, :] = int(line.decode('utf-8').split()[1])
-                        nb1 = self.__move_start_prev_line(obj, nb1)
-                    else:
-                        nb2 = nb1
-                        while True:
-                            line, nb2 = self.__read_line(obj, nb2)
-                            if self.__any_item_in_line(flags, line):
-                                nb2 = self.__move_start_prev_line(obj, nb2)
-                                break
-                        tmp = obj[nb1:nb2].decode('utf-8').split()
-                        tmp = np.array(tmp, np.float64)
-                        hs[ilay+1, :] = tmp
-                        nb1 = nb2
+                nb1 = self.__read_data_chunk(dim['NLAY'], obj, nb1, hs, 1,
+                                             flags)
 
                 nb1 = self.__find_label(obj, labels[3], nb1)
 
                 # reads cell status (0 inactive, 1 active)
                 nb1 = self.__move_start_next_line(obj, nb1)
-                for ilay in range(dim['NLAY']):
-                    line, nb1 = self.__read_line(obj, nb1)
-                    if b'CONSTANT' in line:
-                        hs[ilay+2, :] = float(line.decode('utf-8').split()[1])
-                        nb1 = self.__move_start_prev_line(obj, nb1)
-                    else:
-                        nb2 = nb1
-                        while True:
-                            line, nb2 = self.__read_line(obj, nb2)
-                            if self.__any_item_in_line(flags, line):
-                                nb2 = self.__move_start_prev_line(obj, nb2)
-                                break
-                        tmp = obj[nb1:nb2].decode('utf-8').split()
-                        tmp = np.array(tmp, np.int32)
-                        active_cells[ilay, :] = tmp
-                        nb1 = nb2
+                nb1 = self.__read_data_chunk(dim['NLAY'], obj, nb1,
+                                             active_cells, 0, flags)
 
-        return True
+        return (fid, hs, active_cells)
+
+
+    def __read_data_chunk(self, nlayers: int, obj, nb1: int, arr,
+                          row_shift: int, flags: tuple):
+        """
+        reads  a data chunk from get_layer_definition method
+        """
+        for ilay in range(nlayers):
+            line, nb1 = self.__read_line(obj, nb1)
+            if b'CONSTANT' in line:
+                arr[ilay+row_shift, :] = \
+                arr.fill(line.decode('utf-8').split()[1])
+                nb1 = self.__move_start_prev_line(obj, nb1)
+            else:
+                nb2 = nb1
+                while True:
+                    line, nb2 = self.__read_line(obj, nb2)
+                    if self.__any_item_in_line(flags, line):
+                        nb2 = self.__move_start_prev_line(obj, nb2)
+                        break
+                tmp = obj[nb1:nb2].decode('utf-8').split()
+                tmp = np.array(tmp, arr.dtype)
+                arr[ilay+row_shift, :] = tmp
+                nb1 = nb2
+        return nb1
 
 
     def __find_label(self, obj, label, posn = None, move_cursor = True):
@@ -196,3 +197,38 @@ class DISV():
             if item in line:
                 return True
         return False
+
+#                for ilay in range(dim['NLAY']):
+#                    line, nb1 = self.__read_line(obj, nb1)
+#                    if b'CONSTANT' in line:
+#                        hs[ilay+1, :] = int(line.decode('utf-8').split()[1])
+#                        nb1 = self.__move_start_prev_line(obj, nb1)
+#                    else:
+#                        nb2 = nb1
+#                        while True:
+#                            line, nb2 = self.__read_line(obj, nb2)
+#                            if self.__any_item_in_line(flags, line):
+#                                nb2 = self.__move_start_prev_line(obj, nb2)
+#                                break
+#                        tmp = obj[nb1:nb2].decode('utf-8').split()
+#                        tmp = np.array(tmp, np.float64)
+#                        hs[ilay+1, :] = tmp
+#                        nb1 = nb2
+
+#                for ilay in range(dim['NLAY']):
+#                    line, nb1 = self.__read_line(obj, nb1)
+#                    if b'CONSTANT' in line:
+#                        active_cells[ilay, :] = \
+#                        int(line.decode('utf-8').split()[1])
+#                        nb1 = self.__move_start_prev_line(obj, nb1)
+#                    else:
+#                        nb2 = nb1
+#                        while True:
+#                            line, nb2 = self.__read_line(obj, nb2)
+#                            if self.__any_item_in_line(flags, line):
+#                                nb2 = self.__move_start_prev_line(obj, nb2)
+#                                break
+#                        tmp = obj[nb1:nb2].decode('utf-8').split()
+#                        tmp = np.array(tmp, np.int32)
+#                        active_cells[ilay, :] = tmp
+#                        nb1 = nb2
