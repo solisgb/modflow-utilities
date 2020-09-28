@@ -16,12 +16,15 @@ module m6 plot heads from modflow 6 binary files .bhd in structured or
     Both functions have optional arguments: look at function definition in m6
         module
 
-module disv gets topo model & bottom layers heights from a disv file
+module disv gets top model & bottom layers heights, vertex coordinates,
+    and cells centroids & vertices from a disv file
 
 module m6_tests has several tests:
     adjust file & directoriy names before running
 """
 import littleLogging as logging
+
+disv_file = r'H:\off\chs\m6_cc_chunk_03\v03\qcc_v03.disv'
 
 
 if __name__ == "__main__":
@@ -38,10 +41,12 @@ if __name__ == "__main__":
 
 #        test.test01()
 
-        test.test02()
+        test.test02(disv_file)
+
+        test.test03(disv_file)
 
         xtime = time() - startTime
-        msg = f'El script tardó {xtime:0.1f} s'
+        msg = f'Ellapsed time {xtime:0.1f} s'
 
     except ValueError:
         msg = traceback.format_exc()

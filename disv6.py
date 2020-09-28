@@ -23,6 +23,8 @@ class DISV():
         """
         returns a dict with keys: NCPL -num. cell per layer-;
             NLAY -num layers; NVERT -num. vertex
+        function can be improved; however items ared read at the begining
+            of the file and the improvement will be small
         """
         start_block = b'BEGIN DIMENSIONS'
         n = len(start_block)
@@ -39,17 +41,15 @@ class DISV():
 
     def get_layer_definition(self):
         """
-        returns 3 arrays
+        returns 2 arrays
             hs: heights of model top and layer bottoms, with shape = (n + 1, m)
                 n is num layers; row 1 is model top, then layer bottoms
                 m is num cells per layer
-            active_cells: active cell indicator (n, m)
-            fid: cell identifier (m)
+            idomain: active cell indicator (n, m)
         """
         dim = self.get_dimensions()
-        fid = np.arange(dim['NCPL'], dtype=np.int32)
         hs = np.empty((dim['NLAY'] + 1, dim['NCPL']), np.float64)
-        active_cells = np.empty((dim['NLAY'], dim['NCPL']), np.int32)
+        idomain = np.empty((dim['NLAY'], dim['NCPL']), np.int32)
 
         labels = ('BEGIN GRIDDATA', 'TOP', 'BOTM LAYERED', 'IDOMAIN')
         flags = (b'INTERNAL IPRN', b'CONSTANT', b'IDOMAIN', b'END GRIDDATA')
@@ -81,15 +81,28 @@ class DISV():
                 # reads cell status (0 inactive, 1 active)
                 nb1 = self.__move_start_next_line(obj, nb1)
                 nb1 = self.__read_data_chunk(dim['NLAY'], obj, nb1,
-                                             active_cells, 0, flags)
+                                             idomain, 0, flags)
 
-        return (fid, hs, active_cells)
+        return (hs, idomain)
 
 
     def __read_data_chunk(self, nlayers: int, obj, nb1: int, arr,
                           row_shift: int, flags: tuple):
         """
         reads  a data chunk from get_layer_definition method
+        args:
+            nlayers: model layers number
+            obj: mmap objet pointing to a disv file
+            nb1: byte in obj where the ponter is located
+            arr: array to be filled
+            row_shift: displacement of row index related to layer number
+                if arr has the heights of model top and bottom layers, the
+                heights of the first layer corresponds with the first row
+                in arr, so layer bottom heights are located in ilayer + 1;
+                in this case row_shit is equal to 1; other cases row_shit
+                is equal to 0
+            flags: labels that can signal the end of heights to be read for
+                a layer
         """
         for ilay in range(nlayers):
             line, nb1 = self.__read_line(obj, nb1)
@@ -198,6 +211,60 @@ class DISV():
                 return True
         return False
 
+
+    def read_vertices(self):
+        """
+        reads vertex coordinates from a disv file
+        returns an array with the vertices coordinates
+        """
+        dim = self.get_dimensions()
+        xys = np.empty((dim['NVERT'], 2), np.float64)
+
+        label = 'BEGIN VERTICES'
+        with open(self.file, mode="r", encoding="utf-8") as fr:
+            with mmap.mmap(fr.fileno(), length=0,
+                           access=mmap.ACCESS_READ) as obj:
+
+                nb1 = self.__find_label(obj, label, posn=0)
+                nb1 = self.__move_start_next_line(obj, nb1)
+                nb2 = nb1
+                for i in range(dim['NVERT']):
+                    line, nb2 = self.__read_line(obj, nb2)
+                    words = line.split()
+                    xys[i, :] = (words[1], words[2])
+        return xys
+
+
+    def read_cells(self):
+        """
+        reads cells from a disv file
+        returns 2 arrays:
+            cell centroid coordinates
+            vertices in each cell
+        """
+        dim = self.get_dimensions()
+        centroids = np.empty((dim['NCPL'], 2), np.float64)
+        cell_verts = []
+
+        label = 'BEGIN CELL2D'
+        with open(self.file, mode="r", encoding="utf-8") as fr:
+            with mmap.mmap(fr.fileno(), length=0,
+                           access=mmap.ACCESS_READ) as obj:
+
+                nb1 = self.__find_label(obj, label, posn=0)
+                nb1 = self.__move_start_next_line(obj, nb1)
+                nb2 = nb1
+                for i in range(dim['NCPL']):
+                    line, nb2 = self.__read_line(obj, nb2)
+                    words = line.split()
+                    centroids[i, :] = (words[1], words[2])
+                    nv = int(words[3])
+                    vertices = [int(words[j]) for j in range(4, 4+nv)]
+                    cell_verts.append(vertices)
+        return (centroids, cell_verts)
+
+
+# DEPRECATED
 #                for ilay in range(dim['NLAY']):
 #                    line, nb1 = self.__read_line(obj, nb1)
 #                    if b'CONSTANT' in line:
